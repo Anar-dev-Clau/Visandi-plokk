@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="et">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Visandiplokk</title>
+
+    <!-- Google Font: Cormorant Garamond — ajaloolise pärgamendi tundega, kuid loetav -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+
+    <style>
+        /* =============================================
+           MUUTUJAD
+        ============================================= */
+        :root {
+            --paper:        #f4e4c1;
+            --paper-dark:   #e8d0a0;
+            --ink:          #2c1810;
+            --ink-light:    #6b4226;
+            --accent:       #8b4513;
+
+        }
+
+        /* =============================================
+           BAAS
+        ============================================= */
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            margin: 0; padding: 0;
+            background: #1a1208;
+            font-family: 'Cormorant Garamond', Georgia, serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+        }
+
+        /* =============================================
+           LANDSCAPE BLOKEERING (CSS-only, null JS)
+        ============================================= */
+        #rotation-notice {
+            display: none;
+            position: fixed; inset: 0;
+            background: #1a1208;
+            color: var(--paper);
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            font-size: 22px;
+            text-align: center;
+            padding: 40px;
+        }
+        #rotation-notice .icon { font-size: 64px; }
+
+        /* Rotation notice ainult mobiilil landscape — arvutit ei puuduta */
+        @media (orientation: landscape) and (pointer: coarse) {
+            #rotation-notice { display: flex; }
+        }
+
+        /* =============================================
+           TOOLBAR (ainult desktop)
+        ============================================= */
+        #toolbar {
+            background: #2a1f0e;
+            border-bottom: 1px solid #5a3a1a;
+            color: var(--paper);
+            padding: 8px 16px;
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            align-items: center;
+            flex-wrap: wrap;
+            z-index: 100;
+            flex-shrink: 0;
+        }
+
+        #toolbar button {
+            background: #3d2b10;
+            color: var(--paper);
+            border: 1px solid #6b4226;
+            padding: 6px 14px;
+            cursor: pointer;
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 15px;
+            border-radius: 3px;
+            transition: background 0.15s;
+        }
+        #toolbar button:hover { background: #5a3a1a; }
+        #toolbar .btn-danger { background: #5c1a1a; border-color: #8b2222; }
+        #toolbar .btn-danger:hover { background: #7a2222; }
+        #toolbar .btn-export { background: #1a4a1a; border-color: #2d7a2d; font-weight: 600; }
+        #toolbar .btn-export:hover { background: #2d6b2d; }
+
+        #toolbar .separator {
+            width: 1px; height: 28px;
+            background: #5a3a1a;
+            margin: 0 4px;
+        }
+
+        #toolbar .hint {
+            font-size: 13px;
+            color: var(--ink-light);
+            margin-left: auto;
+            font-style: italic;
+        }
+
+        /* Mobile: toolbar peidetud */
+        @media (pointer: coarse) {
+            #toolbar { display: none; }
+        }
+
+        /* =============================================
+           VIEWPORT JA WRAPPER
+        ============================================= */
+        #app-viewport {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            overflow: hidden;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+        }
+
+        /* Wrapper võtab ARVUTATUD mõõtmed — brauser ei satu segadusse */
+        #canvas-wrapper {
+            position: relative;
+            /* JS arvutab width ja height */
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        /* =============================================
+           LEHTEDE KONTEINER (slaidid)
+        ============================================= */
+        #pages-container {
+            position: absolute;
+            top: 0; left: 0;
+            width: 1080px;
+            /* JS arvutab height = lehtede arv * 1920 */
+            transform-origin: top left;
+            /* JS lisab scale() */
+            will-change: transform;
+        }
+
+        /* Animatsioon juhitakse JS-st — transition seatakse positionToPage poolt */
+
+        /* =============================================
+           ÜKSIK LEHT
+        ============================================= */
+        .page {
+            width: 1080px;
+            height: 1920px;
+            position: relative;
+            overflow: hidden;
+            background: var(--paper);
+
+            /* SVG pärgamendi tekstuur filtri kaudu */
+            filter: url(#parchment-filter);
+        }
+
+        /* Pärgamendi vignette — servatuhmenemine */
+        .page::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at center, transparent 55%, rgba(44, 24, 8, 0.18) 100%),
+                linear-gradient(to bottom, rgba(44,24,8,0.06) 0%, transparent 8%, transparent 92%, rgba(44,24,8,0.10) 100%),
+                linear-gradient(to right,  rgba(44,24,8,0.06) 0%, transparent 4%, transparent 96%, rgba(44,24,8,0.06) 100%);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* =============================================
+           AVALEHT (leht 0) — eraldi struktuur
+        ============================================= */
+        .page.cover-page {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .cover-image-area {
+            flex: 0 0 80%;  /* 80% kõrgusest = 1536px */
+            position: relative;
+            overflow: hidden;
+            background: transparent;
+            padding: 50px 50px 0 50px;  /* serv ülevalt ja külgedelt, all tekstiala piir */
+        }
+
+        .cover-image-area img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            border-radius: 4px;  /* õrn nurk — lisab rafineeritust */
+            box-shadow: 0 8px 40px rgba(44, 24, 8, 0.35);  /* sügavus */
+        }
+
+        /* Placeholder kui pilti pole */
+        .cover-image-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 20px;
+            color: var(--ink-light);
+            font-size: 32px;
+            font-style: italic;
+            cursor: pointer;
+            background: linear-gradient(135deg, #e8d5a8 0%, #d4b896 100%);
+            transition: background 0.2s;
+        }
+        .cover-image-placeholder:hover { background: linear-gradient(135deg, #ddc898 0%, #c9a880 100%); }
+        .cover-image-placeholder .icon { font-size: 80px; opacity: 0.5; }
+
+        .cover-text-area {
+            flex: 0 0 20%;  /* 20% = 384px */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px 60px;
+            border-top: 2px solid var(--paper-dark);
+            position: relative;
+        }
+
+        .cover-text {
+            font-size: 52px;
+            color: var(--ink);
+            text-align: center;
+            outline: none;
+            width: 100%;
+            line-height: 1.3;
+            font-style: italic;
+            letter-spacing: 0.02em;
+        }
+
+        /* Desktop edit vihjed */
+        .cover-text[contenteditable="true"]:empty::before {
+            content: 'Pealkiri...';
+            color: var(--ink-light);
+            opacity: 0.5;
+        }
+
+        /* =============================================
+           SISU LEHTEDE ELEMENDID
+        ============================================= */
+        .el {
+            position: absolute;
+            cursor: default;
+            user-select: none;
+        }
+
+        /* Desktop: liigutatav */
+        .el.draggable { cursor: move; }
+
+        .el-text {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 48px;
+            color: var(--ink);
+            line-height: 1.4;
+            padding: 8px 12px;
+            outline: none;
+            display: block;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            white-space: pre-wrap;
+            writing-mode: horizontal-tb;
+            direction: ltr;
+            min-width: 120px;
+            min-height: 60px;
+            box-sizing: border-box;
+        }
+
+        .el-text[contenteditable="true"] {
+            cursor: text;
+        }
+        .el-text[contenteditable="true"]:empty::before {
+            content: 'Tekst...';
+            color: var(--ink-light);
+            opacity: 0.4;
+        }
+
+        .el-img img {
+            width: 100%;
+            height: auto;        /* kõrgus proportsioonaalne */
+            display: block;
+            pointer-events: none;
+        }
+
+        /* Valitud element (desktop edit) */
+        .el.selected {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        /* Resize nupp */
+        .resize-handle {
+            position: absolute;
+            bottom: -6px;
+            right: -6px;
+            width: 16px;
+            height: 16px;
+            background: var(--accent);
+            border: 2px solid var(--paper);
+            border-radius: 50%;
+            cursor: se-resize;
+            z-index: 20;
+            display: none;
+        }
+        .el.selected .resize-handle { display: block; }
+
+        /* Kustuta nupp */
+        .delete-handle {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            width: 22px;
+            height: 22px;
+            background: #8b2222;
+            color: white;
+            border: 2px solid var(--paper);
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 20;
+            display: none;
+            font-size: 13px;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+        .el.selected .delete-handle { display: flex; }
+
+        /* =============================================
+           NAVIGATSIOON
+        ============================================= */
+        #nav {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            background: rgba(26, 18, 8, 0.88);
+            border: 1px solid #5a3a1a;
+            padding: 10px 24px;
+            border-radius: 40px;
+            color: var(--paper);
+            z-index: 200;
+            backdrop-filter: blur(4px);
+        }
+
+        .nav-btn {
+            background: none;
+            border: none;
+            color: var(--paper);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0 8px;
+            opacity: 0.8;
+            transition: opacity 0.15s;
+            line-height: 1;
+        }
+        .nav-btn:hover { opacity: 1; }
+        .nav-btn:disabled { opacity: 0.25; cursor: default; }
+
+        #page-indicator {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 18px;
+            min-width: 60px;
+            text-align: center;
+            letter-spacing: 0.05em;
+        }
+
+        /* =============================================
+           SVG FILTER — pärgamendi tekstuur (peidetud)
+        ============================================= */
+        #svg-filters {
+            position: absolute;
+            width: 0; height: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+
+<!-- SVG pärgamendi filter — self-contained, null väliseid faile -->
+<svg id="svg-filters" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <filter id="parchment-filter" x="0%" y="0%" width="100%" height="100%"
+                color-interpolation-filters="sRGB">
+            <!-- Kiud: peene müra kiht -->
+            <feTurbulence type="fractalNoise" baseFrequency="0.65 0.45"
+                          numOctaves="4" seed="3" result="noise1"/>
+            <!-- Jämedamad kiud -->
+            <feTurbulence type="turbulence" baseFrequency="0.015 0.008"
+                          numOctaves="3" seed="7" result="noise2"/>
+            <!-- Kombineeri mõlemad -->
+            <feMerge result="combined-noise">
+                <feMergeNode in="noise1"/>
+                <feMergeNode in="noise2"/>
+            </feMerge>
+            <!-- Muuda värviks -->
+            <feColorMatrix type="saturate" values="0" in="combined-noise" result="grey-noise"/>
+            <!-- Tekstuuri tugevus: amplitude kontrol -->
+            <feComponentTransfer in="grey-noise" result="soft-noise">
+                <feFuncR type="linear" slope="0.06" intercept="0.94"/>
+                <feFuncG type="linear" slope="0.05" intercept="0.92"/>
+                <feFuncB type="linear" slope="0.04" intercept="0.85"/>
+            </feComponentTransfer>
+            <!-- Multipliceeri originaaliga -->
+            <feBlend in="SourceGraphic" in2="soft-noise" mode="multiply" result="textured"/>
+            <!-- Õrn teravustamine -->
+            <feConvolveMatrix order="3" kernelMatrix="0 -0.3 0 -0.3 2.2 -0.3 0 -0.3 0"
+                              in="textured" result="sharpened"/>
+            <feBlend in="textured" in2="sharpened" mode="normal"/>
+        </filter>
+    </defs>
+</svg>
+
+<!-- Landscape rotation notice -->
+<div id="rotation-notice">
+    <div class="icon">📱</div>
+    <div>Palun pöörake seade<br>vertikaalasendisse</div>
+</div>
+
+<!-- Desktop toolbar -->
+<div id="toolbar">
+    <button onclick="addText()">＋ Tekst</button>
+    <input type="file" id="img-input" style="display:none" accept="image/*" onchange="handleImageUpload(this)">
+    <button onclick="document.getElementById('img-input').click()">＋ Pilt</button>
+    <div class="separator"></div>
+    <button class="btn-danger" onclick="clearPage()">Tühjenda leht</button>
+    <div class="separator"></div>
+    <button class="btn-export" onclick="exportHTML()">⬇ Salvesta fail</button>
+    <span class="hint">Kliki elemendil → lohista · Nurk → muuda suurust</span>
+</div>
+
+<!-- Peamine viewport -->
+<div id="app-viewport">
+    <div id="canvas-wrapper">
+        <div id="pages-container">
+            <!-- Lehed genereeritakse JS-ga -->
+        </div>
+    </div>
+</div>
+
+<!-- Navigatsioon -->
+<div id="nav">
+    <button class="nav-btn" id="btn-prev" onclick="navigate(-1)" disabled>▲</button>
+    <span id="page-indicator">1 / 7</span>
+    <button class="nav-btn" id="btn-next" onclick="navigate(1)">▼</button>
+</div>
+
+<!-- =============================================
+     ANDMED — state kirjutatakse siia exportHTML poolt
+============================================= -->
+<script id="app-state">
+const STATE = {
+    currentPage: 0,
+    pages: [
+        {
+            type: "cover",
+            coverImage: null,   // base64 või null
+            coverText: "Minu Visandiplokk"
+        },
+        { type: "content", elements: [] },
+        { type: "content", elements: [] },
+        { type: "content", elements: [] },
+        { type: "content", elements: [] },
+        { type: "content", elements: [] },
+        { type: "content", elements: [] }
+    ]
+};
+</script>
+
+<script>
+// =============================================
+// GLOBAALSED VIITED
+// =============================================
+const wrapper       = document.getElementById('canvas-wrapper');
+const container     = document.getElementById('pages-container');
+const indicator     = document.getElementById('page-indicator');
+const btnPrev       = document.getElementById('btn-prev');
+const btnNext       = document.getElementById('btn-next');
+
+const PAGES         = 7;
+const CW            = 1080;   // canvas width
+const CH            = 1920;   // canvas height
+const IS_MOBILE     = window.matchMedia('(pointer: coarse)').matches;
+
+let currentScale    = 1;
+let selectedEl      = null;   // praegu valitud element (desktop)
+
+// =============================================
+// SKALEERIMINE — top left, wrapper arvutatud
+// =============================================
+function updateScale() {
+    const toolbarH  = IS_MOBILE ? 0 : (document.getElementById('toolbar').offsetHeight || 0);
+    const navH      = 80;
+    const vw        = window.innerWidth;
+    const vh        = window.innerHeight - toolbarH - navH;
+
+    currentScale = Math.min(vw / CW, vh / CH);
+
+    // Wrapper saab TÄPSED mõõtmed — brauser ei eksi
+    wrapper.style.width  = (CW * currentScale) + 'px';
+    wrapper.style.height = (CH * currentScale) + 'px';
+
+    // Container
+    container.style.transformOrigin = 'top left';
+    container.style.width           = CW + 'px';
+    container.style.height          = (CH * PAGES) + 'px';
+
+    // Leht positsioneerub — seab scale + translateY koos
+    positionToPage(STATE.currentPage, false);
+}
+
+// =============================================
+// NAVIGATSIOON
+// =============================================
+function positionToPage(pageIndex, animate) {
+    if (animate) {
+        container.style.transition = 'transform 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+        // Eemalda kallis SVG filter animatsiooni ajaks
+        document.querySelectorAll('.page').forEach(p => p.style.filter = 'none');
+        setTimeout(() => {
+            document.querySelectorAll('.page').forEach(p => p.style.filter = '');
+            container.style.transition = 'none';
+        }, 350);
+    } else {
+        container.style.transition = 'none';
+    }
+    container.style.transform = `scale(${currentScale}) translateY(${pageIndex * -CH}px)`;
+}
+
+function navigate(dir) {
+    const next = STATE.currentPage + dir;
+    if (next < 0 || next >= PAGES) return;
+
+    deselectAll();
+    STATE.currentPage = next;
+    positionToPage(next, true);
+    updateNavButtons();
+    saveLocal();
+}
+
+function updateNavButtons() {
+    btnPrev.disabled = STATE.currentPage === 0;
+    btnNext.disabled = STATE.currentPage === PAGES - 1;
+    indicator.textContent = `${STATE.currentPage + 1} / ${PAGES}`;
+}
+
+// =============================================
+// RENDERDAMINE
+// =============================================
+function renderAll() {
+    container.innerHTML = '';
+    STATE.pages.forEach((page, i) => {
+        const pageEl = document.createElement('div');
+        pageEl.className = 'page';
+        pageEl.dataset.pageIndex = i;
+
+        if (page.type === 'cover') {
+            renderCoverPage(pageEl, page);
+        } else {
+            renderContentPage(pageEl, page, i);
+        }
+
+        container.appendChild(pageEl);
+    });
+
+    updateScale();
+    updateNavButtons();
+}
+
+// --- Avaleht ---
+function renderCoverPage(pageEl, page) {
+    pageEl.classList.add('cover-page');
+
+    // Pildi ala
+    const imgArea = document.createElement('div');
+    imgArea.className = 'cover-image-area';
+
+    if (page.coverImage) {
+        const img = document.createElement('img');
+        img.src = page.coverImage;
+        imgArea.appendChild(img);
+
+        if (!IS_MOBILE) {
+            imgArea.title = 'Kliki pildi vahetamiseks';
+            imgArea.style.cursor = 'pointer';
+            imgArea.onclick = () => triggerCoverImageUpload();
+        }
+    } else {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'cover-image-placeholder';
+        placeholder.innerHTML = '<div class="icon">🖼</div><div>Kliki pildi lisamiseks</div>';
+        if (!IS_MOBILE) placeholder.onclick = () => triggerCoverImageUpload();
+        imgArea.appendChild(placeholder);
+    }
+
+    // Teksti ala
+    const textArea = document.createElement('div');
+    textArea.className = 'cover-text-area';
+
+    const textEl = document.createElement('div');
+    textEl.className = 'cover-text';
+    textEl.textContent = page.coverText || '';
+    if (!IS_MOBILE) {
+        textEl.contentEditable = 'true';
+        textEl.oninput = (e) => {
+            page.coverText = e.target.innerText;
+            saveLocal();
+        };
+    }
+
+    textArea.appendChild(textEl);
+    pageEl.appendChild(imgArea);
+    pageEl.appendChild(textArea);
+}
+
+// --- Sisuleht ---
+function renderContentPage(pageEl, page, pageIndex) {
+    page.elements.forEach(elData => {
+        const elDom = createElementDOM(elData, pageIndex);
+        pageEl.appendChild(elDom);
+    });
+
+    // Desktop: klikk tühjale alale → deselect
+    if (!IS_MOBILE) {
+        pageEl.addEventListener('mousedown', (e) => {
+            if (e.target === pageEl) deselectAll();
+        });
+    }
+}
+
+// =============================================
+// ELEMENTI LOOMINE
+// =============================================
+function createElementDOM(elData, pageIndex) {
+    const div = document.createElement('div');
+    div.className = `el el-${elData.type}`;
+    div.dataset.id = elData.id;
+
+    div.style.left   = elData.x + 'px';
+    div.style.top    = elData.y + 'px';
+    div.style.width  = elData.w + 'px';
+    if (elData.h) div.style.height = elData.h + 'px';
+    div.style.zIndex = elData.z || 1;
+
+    if (elData.type === 'text') {
+        div.style.fontSize      = (elData.fontSize || 48) + 'px';
+        div.style.writingMode   = 'horizontal-tb';
+        div.style.direction     = 'ltr';
+        div.style.display       = 'block';
+        div.style.whiteSpace    = 'pre-wrap';
+        div.style.overflowWrap  = 'break-word';
+        div.textContent = elData.content || '';
+
+        if (!IS_MOBILE) {
+            div.contentEditable = 'true';
+            div.oninput = (e) => { elData.content = e.target.innerText; saveLocal(); };
+        }
+    } else if (elData.type === 'img') {
+        const img = document.createElement('img');
+        img.src = elData.src;
+        div.appendChild(img);
+    }
+
+    if (!IS_MOBILE) {
+        div.classList.add('draggable');
+
+        // Resize nupp
+        const resizeH = document.createElement('div');
+        resizeH.className = 'resize-handle';
+        div.appendChild(resizeH);
+
+        // Kustuta nupp
+        const deleteH = document.createElement('div');
+        deleteH.className = 'delete-handle';
+        deleteH.textContent = '×';
+        deleteH.onclick = (e) => {
+            e.stopPropagation();
+            deleteElement(elData.id, pageIndex);
+        };
+        div.appendChild(deleteH);
+
+        // Drag + valimine
+        // Esimene klikk = vali (näita × ja resize)
+        // Teine klikk samal elemendil = luba tekstiredakteerimismine
+        div.addEventListener('mousedown', (e) => {
+            if (e.target === resizeH) return;
+            if (e.target === deleteH) return;
+
+            const alreadySelected = div.classList.contains('selected');
+
+            if (elData.type === 'text' && alreadySelected) {
+                // Teine klikk — luba teksti muutmine
+                return;
+            }
+
+            if (elData.type === 'text') {
+                // Esimene klikk — vali, blokeeri teksti muutmine
+                e.preventDefault();
+                div.blur();
+            } else {
+                e.preventDefault();
+            }
+
+            selectElement(div);
+            if (!alreadySelected) return; // esimesel klikil ei lohista
+            startDrag(e, elData, div);
+        });
+
+        // Topeltklikk = luba teksti muutmine ja sea kursor
+        div.addEventListener('dblclick', (e) => {
+            if (elData.type === 'text') {
+                div.focus();
+                // Pane kursor klikitud kohta
+                const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+                if (range) {
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
+            }
+        });
+
+        // Resize
+        resizeH.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            startResize(e, elData, div);
+        });
+    }
+
+    return div;
+}
+
+// =============================================
+// DRAG
+// =============================================
+function startDrag(e, elData, elDom) {
+    let sx = e.clientX, sy = e.clientY;
+
+    function onMove(e) {
+        const dx = (e.clientX - sx) / currentScale;
+        const dy = (e.clientY - sy) / currentScale;
+        elData.x = Math.max(0, Math.min(CW - 50, elData.x + dx));
+        elData.y = Math.max(0, Math.min(CH - 50, elData.y + dy));
+        elDom.style.left = elData.x + 'px';
+        elDom.style.top  = elData.y + 'px';
+        sx = e.clientX; sy = e.clientY;
+    }
+
+    function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        saveLocal();
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+}
+
+// =============================================
+// RESIZE
+// =============================================
+function startResize(e, elData, elDom) {
+    let sx = e.clientX, sy = e.clientY;
+
+    function onMove(e) {
+        const dw = (e.clientX - sx) / currentScale;
+        const dh = (e.clientY - sy) / currentScale;
+        elData.w = Math.max(80, elData.w + dw);
+        if (elData.h) elData.h = Math.max(60, elData.h + dh);
+        elDom.style.width  = elData.w + 'px';
+        if (elData.h) elDom.style.height = elData.h + 'px';
+        sx = e.clientX; sy = e.clientY;
+    }
+
+    function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        saveLocal();
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+}
+
+// =============================================
+// VALIMINE
+// =============================================
+function selectElement(elDom) {
+    deselectAll();
+    elDom.classList.add('selected');
+    selectedEl = elDom;
+}
+
+function deselectAll() {
+    document.querySelectorAll('.el.selected').forEach(e => e.classList.remove('selected'));
+    selectedEl = null;
+}
+
+// =============================================
+// ELEMENTI LISAMINE
+// =============================================
+function addText() {
+    const page = STATE.pages[STATE.currentPage];
+    if (page.type !== 'content') return;
+    if (page.elements.length >= 6) {
+        alert('Maksimaalselt 6 elementi lehel.'); return;
+    }
+
+    const el = {
+        id: Date.now(),
+        type: 'text',
+        x: 100, y: 200,
+        w: 800, h: null,
+        fontSize: 48,
+        content: '',
+        z: page.elements.length + 1
+    };
+    page.elements.push(el);
+
+    const pageDOM = getPageDOM(STATE.currentPage);
+    if (pageDOM) {
+        const elDom = createElementDOM(el, STATE.currentPage);
+        pageDOM.appendChild(elDom);
+        setTimeout(() => {
+            selectElement(elDom);
+            elDom.focus();
+        }, 50);
+    }
+    saveLocal();
+}
+
+function handleImageUpload(input) {
+    if (!input.files || !input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const page = STATE.pages[STATE.currentPage];
+        if (page.type !== 'content') return;
+        if (page.elements.length >= 6) {
+            alert('Maksimaalselt 6 elementi lehel.'); return;
+        }
+
+        // Paki pilt kokku, seejärel loe mõõtmed ja lisa element
+        compressImage(e.target.result, 1200, 0.7).then(compressed => {
+            const tmpImg = new Image();
+            tmpImg.onload = () => {
+                const maxW = 800;
+                const w = Math.min(maxW, tmpImg.naturalWidth);
+
+                const el = {
+                    id: Date.now(),
+                    type: 'img',
+                    x: 100, y: 100,
+                    w: w, h: null,
+                    src: compressed,
+                    z: page.elements.length + 1
+                };
+                page.elements.push(el);
+
+                const pageDOM = getPageDOM(STATE.currentPage);
+                if (pageDOM) {
+                    const elDom = createElementDOM(el, STATE.currentPage);
+                    pageDOM.appendChild(elDom);
+                    selectElement(elDom);
+                }
+                saveLocal();
+            };
+            tmpImg.src = compressed;
+        });
+    };
+    reader.readAsDataURL(input.files[0]);
+    input.value = '';
+}
+
+function triggerCoverImageUpload() {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = (e) => {
+        if (!e.target.files[0]) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            compressImage(ev.target.result, 1200, 0.7).then(compressed => {
+                STATE.pages[0].coverImage = compressed;
+                renderAll();
+                saveLocal();
+            });
+        };
+        reader.readAsDataURL(e.target.files[0]);
+    };
+    inp.click();
+}
+
+// =============================================
+// KUSTUTAMINE
+// =============================================
+function deleteElement(id, pageIndex) {
+    const page = STATE.pages[pageIndex];
+    page.elements = page.elements.filter(e => e.id !== id);
+    const pageDOM = getPageDOM(pageIndex);
+    if (pageDOM) {
+        const elDom = pageDOM.querySelector(`[data-id="${id}"]`);
+        if (elDom) elDom.remove();
+    }
+    saveLocal();
+}
+
+function clearPage() {
+    if (!confirm('Tühjenda kogu lehe sisu?')) return;
+    const page = STATE.pages[STATE.currentPage];
+    if (page.type !== 'content') return;
+    page.elements = [];
+    const pageDOM = getPageDOM(STATE.currentPage);
+    if (pageDOM) {
+        pageDOM.querySelectorAll('.el').forEach(e => e.remove());
+    }
+    saveLocal();
+}
+
+// =============================================
+// ABIFUNKTSIOONID
+// =============================================
+function getPageDOM(index) {
+    return container.querySelector(`.page[data-page-index="${index}"]`);
+}
+
+// =============================================
+// PILDI KOMPRESSIOON
+// =============================================
+/**
+ * Pakib pildi kokku, et säästa localStorage ruumi ja hoida faili maht väike.
+ * @param {string} base64Str - Algne pilt
+ * @param {number} maxWidth - Maksimaalne laius (nt 1200)
+ * @param {number} quality - JPEG kvaliteet (0.1 - 1.0)
+ */
+function compressImage(base64Str, maxWidth = 1200, quality = 0.7) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.src = base64Str;
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            if (width > maxWidth) {
+                height = Math.round((height * maxWidth) / width);
+                width = maxWidth;
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+    });
+}
+
+// =============================================
+// SALVESTAMINE
+// =============================================
+function saveLocal() {
+    try {
+        localStorage.setItem('visand_autosave', JSON.stringify(STATE));
+    } catch(e) { /* quota exceeded — ignoreerime */ }
+}
+
+function loadLocal() {
+    try {
+        const saved = localStorage.getItem('visand_autosave');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            // Kopeeri andmed STATE-i
+            STATE.currentPage = parsed.currentPage || 0;
+            parsed.pages.forEach((p, i) => {
+                if (STATE.pages[i]) Object.assign(STATE.pages[i], p);
+            });
+        }
+    } catch(e) { /* rikutud andmed — ignoreerime */ }
+}
+
+// =============================================
+// EXPORT
+// =============================================
+function exportHTML() {
+    STATE.currentPage = 0;
+
+    // Kirjuta state scripti
+    const stateScript = document.getElementById('app-state');
+    stateScript.textContent = `\nconst STATE = ${JSON.stringify(STATE, null, 2)};\n`;
+
+    const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+    const blob = new Blob([html], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'visand_VALMIS.html';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+// =============================================
+// MOBIILI SWIPE (vertikaalne)
+// =============================================
+let touchStartY = 0;
+
+document.addEventListener('touchstart', (e) => {
+    touchStartY = e.touches[0].clientY;
+}, { passive: true });
+
+document.addEventListener('touchend', (e) => {
+    const dy = touchStartY - e.changedTouches[0].clientY;
+    const threshold = window.innerHeight * 0.06;
+    if (dy > threshold) navigate(1);
+    if (dy < -threshold) navigate(-1);
+}, { passive: true });
+
+// =============================================
+// KLAVIATUUR (desktop)
+// =============================================
+document.addEventListener('keydown', (e) => {
+    if (IS_MOBILE) return;
+    if (e.key === 'Escape') deselectAll();
+    if (e.key === 'Delete' && selectedEl) {
+        const id = parseInt(selectedEl.dataset.id);
+        if (id) deleteElement(id, STATE.currentPage);
+    }
+});
+
+// =============================================
+// RESIZE
+// =============================================
+window.addEventListener('resize', updateScale);
+
+// =============================================
+// INIT
+// =============================================
+window.addEventListener('load', () => {
+    loadLocal();
+    renderAll();
+});
+</script>
+</body>
+</html>
