@@ -27,6 +27,11 @@
         ============================================= */
         *, *::before, *::after { box-sizing: border-box; }
 
+        html, body {
+            writing-mode: horizontal-tb !important;
+            direction: ltr !important;
+        }
+
         body {
             margin: 0; padding: 0;
             background: #1a1208;
@@ -164,6 +169,17 @@
             filter: url(#parchment-filter);
         }
 
+        /* Sisu lehtede servaraam — dekoratiivne, elemendid liiguvad vabalt */
+        .page.content-page::before {
+            content: '';
+            position: absolute;
+            inset: 40px;
+            border: 1px solid rgba(139, 90, 43, 0.2);
+            border-radius: 2px;
+            pointer-events: none;
+            z-index: 5;
+        }
+
         /* Pärgamendi vignette — servatuhmenemine */
         .page::after {
             content: '';
@@ -265,18 +281,20 @@
             font-family: 'Cormorant Garamond', serif;
             font-size: 48px;
             color: var(--ink);
-            line-height: 1.4;
-            padding: 8px 12px;
+            line-height: 1.2;
+            padding: 10px;
             outline: none;
             display: block;
             word-wrap: break-word;
             overflow-wrap: break-word;
             white-space: pre-wrap;
-            writing-mode: horizontal-tb;
-            direction: ltr;
-            min-width: 120px;
-            min-height: 60px;
+            text-align: left;
+            writing-mode: horizontal-tb !important;
+            direction: ltr !important;
+            min-width: 150px;
+            min-height: 1.2em;
             box-sizing: border-box;
+            transform-origin: top left;
         }
 
         .el-text[contenteditable="true"] {
@@ -301,13 +319,13 @@
             outline-offset: 2px;
         }
 
-        /* Resize nupp */
+        /* Resize nupp — paremal all SEES elemendis */
         .resize-handle {
             position: absolute;
-            bottom: -6px;
-            right: -6px;
-            width: 16px;
-            height: 16px;
+            bottom: 4px;
+            right: 4px;
+            width: 18px;
+            height: 18px;
             background: var(--accent);
             border: 2px solid var(--paper);
             border-radius: 50%;
@@ -317,24 +335,25 @@
         }
         .el.selected .resize-handle { display: block; }
 
-        /* Kustuta nupp */
+        /* Kustuta nupp — paremal ülal SEES elemendis */
         .delete-handle {
             position: absolute;
-            top: -10px;
-            right: -10px;
-            width: 22px;
-            height: 22px;
+            top: 4px;
+            right: 4px;
+            width: 24px;
+            height: 24px;
             background: #8b2222;
             color: white;
             border: 2px solid var(--paper);
             border-radius: 50%;
             cursor: pointer;
-            z-index: 20;
+            z-index: 21;
             display: none;
-            font-size: 13px;
+            font-size: 14px;
             align-items: center;
             justify-content: center;
             line-height: 1;
+            font-weight: bold;
         }
         .el.selected .delete-handle { display: flex; }
 
@@ -439,6 +458,9 @@
     <button onclick="document.getElementById('img-input').click()">＋ Pilt</button>
     <div class="separator"></div>
     <button class="btn-danger" onclick="clearPage()">Tühjenda leht</button>
+    <button onclick="debugText()" style="background:#555">Debug tekst</button>
+    <div class="separator"></div>
+    <button class="btn-danger" onclick="newNotebook()">✦ Uus vihik</button>
     <div class="separator"></div>
     <button class="btn-export" onclick="exportHTML()">⬇ Salvesta fail</button>
     <span class="hint">Kliki elemendil → lohista · Nurk → muuda suurust</span>
@@ -529,13 +551,14 @@ function updateScale() {
 // =============================================
 function positionToPage(pageIndex, animate) {
     if (animate) {
-        container.style.transition = 'transform 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+        container.style.transition = 'transform 0.32s ease-out';
         // Eemalda kallis SVG filter animatsiooni ajaks
         document.querySelectorAll('.page').forEach(p => p.style.filter = 'none');
-        setTimeout(() => {
+        container.addEventListener('transitionend', function onEnd() {
+            container.removeEventListener('transitionend', onEnd);
             document.querySelectorAll('.page').forEach(p => p.style.filter = '');
             container.style.transition = 'none';
-        }, 350);
+        });
     } else {
         container.style.transition = 'none';
     }
@@ -599,6 +622,32 @@ function renderCoverPage(pageEl, page) {
             imgArea.title = 'Kliki pildi vahetamiseks';
             imgArea.style.cursor = 'pointer';
             imgArea.onclick = () => triggerCoverImageUpload();
+
+            // × nupp pildi kustutamiseks
+            const delBtn = document.createElement('div');
+            delBtn.textContent = '×';
+            delBtn.style.cssText = `
+                position: absolute; top: 60px; right: 60px;
+                width: 48px; height: 48px;
+                background: rgba(139,34,34,0.85);
+                color: white; border-radius: 50%;
+                display: flex; align-items: center; justify-content: center;
+                font-size: 24px; cursor: pointer; z-index: 20;
+                border: 2px solid white;
+            `;
+            delBtn.onclick = (e) => {
+                e.stopPropagation();
+                STATE.pages[0].coverImage = null;
+                // Uuenda ainult pildiala
+                const placeholder = document.createElement('div');
+                placeholder.className = 'cover-image-placeholder';
+                placeholder.innerHTML = '<div class="icon">🖼</div><div>Kliki pildi lisamiseks</div>';
+                placeholder.onclick = () => triggerCoverImageUpload();
+                imgArea.innerHTML = '';
+                imgArea.appendChild(placeholder);
+                saveLocal();
+            };
+            imgArea.appendChild(delBtn);
         }
     } else {
         const placeholder = document.createElement('div');
@@ -630,6 +679,7 @@ function renderCoverPage(pageEl, page) {
 
 // --- Sisuleht ---
 function renderContentPage(pageEl, page, pageIndex) {
+    pageEl.classList.add('content-page');
     page.elements.forEach(elData => {
         const elDom = createElementDOM(elData, pageIndex);
         pageEl.appendChild(elDom);
@@ -647,44 +697,62 @@ function renderContentPage(pageEl, page, pageIndex) {
 // ELEMENTI LOOMINE
 // =============================================
 function createElementDOM(elData, pageIndex) {
-    const div = document.createElement('div');
-    div.className = `el el-${elData.type}`;
-    div.dataset.id = elData.id;
+    // Wrapper — sisaldab teksti/pildi + handle'eid eraldi
+    const wrapper = document.createElement('div');
+    wrapper.className = `el el-${elData.type}`;
+    wrapper.dataset.id = elData.id;
+    wrapper.style.position = 'absolute';
+    wrapper.style.left     = elData.x + 'px';
+    wrapper.style.top      = elData.y + 'px';
+    wrapper.style.width    = elData.w + 'px';
+    wrapper.style.zIndex   = elData.z || 1;
+    if (elData.h) wrapper.style.height = elData.h + 'px';
 
-    div.style.left   = elData.x + 'px';
-    div.style.top    = elData.y + 'px';
-    div.style.width  = elData.w + 'px';
-    if (elData.h) div.style.height = elData.h + 'px';
-    div.style.zIndex = elData.z || 1;
+    let div; // sisu element
 
     if (elData.type === 'text') {
-        div.style.fontSize      = (elData.fontSize || 48) + 'px';
-        div.style.writingMode   = 'horizontal-tb';
-        div.style.direction     = 'ltr';
-        div.style.display       = 'block';
-        div.style.whiteSpace    = 'pre-wrap';
-        div.style.overflowWrap  = 'break-word';
+        // Tekstikast — eraldi div wrapperist SEES aga handle'itest eraldi
+        div = document.createElement('div');
+        div.className = 'el-text-inner';
+        div.style.width       = '100%';
+        div.style.fontSize    = (elData.fontSize || 48) + 'px';
+        div.style.whiteSpace  = 'pre-wrap';
+        div.style.display     = 'block';
+        div.style.writingMode = 'horizontal-tb';
+        div.style.direction   = 'ltr';
+        div.style.outline     = 'none';
+        div.style.minHeight   = '3.6em';  /* 3 rida */
+        div.style.padding     = '10px';
+        div.style.boxSizing   = 'border-box';
+        div.style.wordWrap    = 'break-word';
         div.textContent = elData.content || '';
 
         if (!IS_MOBILE) {
             div.contentEditable = 'true';
-            div.oninput = (e) => { elData.content = e.target.innerText; saveLocal(); };
+            div.oninput = (e) => {
+                elData.content = e.target.innerText;
+                saveLocal();
+            };
         }
-    } else if (elData.type === 'img') {
-        const img = document.createElement('img');
-        img.src = elData.src;
-        div.appendChild(img);
+        wrapper.appendChild(div);
+    } else {
+        div = wrapper; // pildil wrapper ongi sisu element
+        if (elData.type === 'img') {
+            const img = document.createElement('img');
+            img.src = elData.src;
+            wrapper.appendChild(img);
+        }
     }
 
     if (!IS_MOBILE) {
-        div.classList.add('draggable');
+        wrapper.classList.add('draggable');
 
-        // Resize nupp
+        // Resize nupp — wrapperis aga tekstikastist eraldi
         const resizeH = document.createElement('div');
         resizeH.className = 'resize-handle';
-        div.appendChild(resizeH);
+        wrapper.appendChild(resizeH);
 
-        // Kustuta nupp
+        // Kustuta nupp — wrapperis aga tekstikastist eraldi
         const deleteH = document.createElement('div');
         deleteH.className = 'delete-handle';
         deleteH.textContent = '×';
@@ -692,40 +760,42 @@ function createElementDOM(elData, pageIndex) {
             e.stopPropagation();
             deleteElement(elData.id, pageIndex);
         };
-        div.appendChild(deleteH);
+        wrapper.appendChild(deleteH);
 
         // Drag + valimine
-        // Esimene klikk = vali (näita × ja resize)
-        // Teine klikk samal elemendil = luba tekstiredakteerimismine
-        div.addEventListener('mousedown', (e) => {
+        wrapper.addEventListener('mousedown', (e) => {
             if (e.target === resizeH) return;
             if (e.target === deleteH) return;
+            const alreadySelected = wrapper.classList.contains('selected');
 
-            const alreadySelected = div.classList.contains('selected');
-
-            if (elData.type === 'text' && alreadySelected) {
-                // Teine klikk — luba teksti muutmine
+            if (alreadySelected) {
+                if (elData.type !== 'text') e.preventDefault();
+                const startX = e.clientX, startY = e.clientY;
+                let dragging = false;
+                const onMove = (mv) => {
+                    if (!dragging && Math.hypot(mv.clientX - startX, mv.clientY - startY) > 5) {
+                        dragging = true;
+                        startDrag(mv, elData, wrapper);
+                    }
+                };
+                const onUp = () => {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                };
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
                 return;
             }
 
-            if (elData.type === 'text') {
-                // Esimene klikk — vali, blokeeri teksti muutmine
-                e.preventDefault();
-                div.blur();
-            } else {
-                e.preventDefault();
-            }
-
-            selectElement(div);
-            if (!alreadySelected) return; // esimesel klikil ei lohista
-            startDrag(e, elData, div);
+            e.preventDefault();
+            if (elData.type === 'text' && div) div.blur();
+            selectElement(wrapper);
         });
 
-        // Topeltklikk = luba teksti muutmine ja sea kursor
-        div.addEventListener('dblclick', (e) => {
-            if (elData.type === 'text') {
+        // Topeltklikk tekstil → fookus
+        wrapper.addEventListener('dblclick', (e) => {
+            if (elData.type === 'text' && div) {
                 div.focus();
-                // Pane kursor klikitud kohta
                 const range = document.caretRangeFromPoint(e.clientX, e.clientY);
                 if (range) {
                     const sel = window.getSelection();
@@ -739,11 +809,11 @@ function createElementDOM(elData, pageIndex) {
         resizeH.addEventListener('mousedown', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            startResize(e, elData, div);
+            startResize(e, elData, wrapper);
         });
     }
 
-    return div;
+    return wrapper;
 }
 
 // =============================================
@@ -777,14 +847,18 @@ function startDrag(e, elData, elDom) {
 // =============================================
 function startResize(e, elData, elDom) {
     let sx = e.clientX, sy = e.clientY;
+    // Lukusta pildi kuvasuhe resize alguses
+    const ratio = (elData.h && elData.w) ? elData.h / elData.w : null;
 
     function onMove(e) {
         const dw = (e.clientX - sx) / currentScale;
-        const dh = (e.clientY - sy) / currentScale;
         elData.w = Math.max(80, elData.w + dw);
-        if (elData.h) elData.h = Math.max(60, elData.h + dh);
-        elDom.style.width  = elData.w + 'px';
-        if (elData.h) elDom.style.height = elData.h + 'px';
+        elDom.style.width = elData.w + 'px';
+        // Pildil arvuta kõrgus ratio järgi — proportsioonid säilivad
+        if (elData.type === 'img' && ratio) {
+            elData.h = Math.round(elData.w * ratio);
+            elDom.style.height = elData.h + 'px';
+        }
         sx = e.clientX; sy = e.clientY;
     }
 
@@ -837,10 +911,7 @@ function addText() {
     if (pageDOM) {
         const elDom = createElementDOM(el, STATE.currentPage);
         pageDOM.appendChild(elDom);
-        setTimeout(() => {
-            selectElement(elDom);
-            elDom.focus();
-        }, 50);
+        // Ära vali automaatselt — kasutaja klikib ise
     }
     saveLocal();
 }
@@ -896,7 +967,19 @@ function triggerCoverImageUpload() {
         reader.onload = (ev) => {
             compressImage(ev.target.result, 1200, 0.7).then(compressed => {
                 STATE.pages[0].coverImage = compressed;
-                renderAll();
+                // Uuenda ainult pildiala — ära hävita kogu DOM-i
+                const imgArea = document.querySelector('.cover-image-area');
+                if (imgArea) {
+                    imgArea.innerHTML = '';
+                    const img = document.createElement('img');
+                    img.src = compressed;
+                    imgArea.appendChild(img);
+                    if (!IS_MOBILE) {
+                        imgArea.title = 'Kliki pildi vahetamiseks';
+                        imgArea.style.cursor = 'pointer';
+                        imgArea.onclick = () => triggerCoverImageUpload();
+                    }
+                }
                 saveLocal();
             });
         };
@@ -969,23 +1052,67 @@ function compressImage(base64Str, maxWidth = 1200, quality = 0.7) {
 }
 
 // =============================================
+// UUS VIHIK
+// =============================================
+function newNotebook() {
+    if (!confirm('Alustad uut vihikut — kogu praegune sisu kustutatakse. Kas oled kindel?')) return;
+    STATE.currentPage = 0;
+    STATE.pages = [
+        { type: 'cover', coverImage: null, coverText: 'Minu Visandiplokk' },
+        { type: 'content', elements: [] },
+        { type: 'content', elements: [] },
+        { type: 'content', elements: [] },
+        { type: 'content', elements: [] },
+        { type: 'content', elements: [] },
+        { type: 'content', elements: [] }
+    ];
+    localStorage.removeItem('visand_autosave');
+    renderAll();
+}
+
+// =============================================
+// DEBUG
+// =============================================
+function debugText() {
+    const els = document.querySelectorAll('.el-text');
+    if (!els.length) { alert('Tekstikaste ei leitud lehel'); return; }
+    els.forEach((el, i) => {
+        const cs = getComputedStyle(el);
+        alert(
+            `Tekstikast ${i+1}:\n` +
+            `inline writing-mode: "${el.style.writingMode}"\n` +
+            `computed writing-mode: "${cs.writingMode}"\n` +
+            `inline direction: "${el.style.direction}"\n` +
+            `computed direction: "${cs.direction}"\n` +
+            `display: "${cs.display}"\n` +
+            `class: "${el.className}"`
+        );
+    });
+}
+
+// =============================================
 // SALVESTAMINE
 // =============================================
 function saveLocal() {
     try {
         localStorage.setItem('visand_autosave', JSON.stringify(STATE));
-    } catch(e) { /* quota exceeded — ignoreerime */ }
+    } catch(e) {
+        if (e.name === 'QuotaExceededError') {
+            alert('Brauseri mälu on täis!\nSalvesta fail kohe: "⬇ Salvesta fail"');
+        }
+    }
 }
 
 function loadLocal() {
+    // Eksporditud fail sisaldab STATE-i juba — localStorage ei tohi seda üle kirjutada
+    if (STATE.exported) return;
     try {
         const saved = localStorage.getItem('visand_autosave');
         if (saved) {
             const parsed = JSON.parse(saved);
-            // Kopeeri andmed STATE-i
-            STATE.currentPage = parsed.currentPage || 0;
+            STATE.currentPage = Math.min(parsed.currentPage || 0, PAGES - 1);
             parsed.pages.forEach((p, i) => {
-                if (STATE.pages[i]) Object.assign(STATE.pages[i], p);
+                if (i < STATE.pages.length) Object.assign(STATE.pages[i], p);
             });
         }
     } catch(e) { /* rikutud andmed — ignoreerime */ }
@@ -995,11 +1122,28 @@ function loadLocal() {
 // EXPORT
 // =============================================
 function exportHTML() {
+    // Sünkroniseeri kõik aktiivsed contenteditable väljad STATE-i
+    document.querySelectorAll('.el-text').forEach(el => {
+        const id = parseInt(el.dataset.id);
+        STATE.pages.forEach(page => {
+            if (page.elements) {
+                const found = page.elements.find(e => e.id === id);
+                if (found) found.content = el.innerText;
+            }
+        });
+    });
+    const coverText = document.querySelector('.cover-text');
+    if (coverText) STATE.pages[0].coverText = coverText.innerText;
+
     STATE.currentPage = 0;
+    STATE.exported = true;  // Märgib et fail on eksporditud — loadLocal ei kirjuta üle
 
     // Kirjuta state scripti
     const stateScript = document.getElementById('app-state');
     stateScript.textContent = `\nconst STATE = ${JSON.stringify(STATE, null, 2)};\n`;
+    
+    // Eemalda flag arendusversioonist
+    delete STATE.exported;
 
     const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
     const blob = new Blob([html], { type: 'text/html' });
